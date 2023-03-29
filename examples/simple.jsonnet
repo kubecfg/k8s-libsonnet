@@ -1,14 +1,3 @@
-# k8s-libsonnet
-Helpers for creating k8s resources without abuse of constructor functions
-
-## Features
-
-* exposes k8s "named arrays" as objects that can be more easily overriden (`env_+:{BAR: {value:'override'}}`)
-* allows to apply overrides on all objects of a given type, e.g. all Objects (e.g. namespace), all PodSpecs (e.g. labels)
-
-## Example:
-
-```jsonnet
 (import '../k8s.libsonnet').RootComponent {
   configmap: $.k8s.v1.ConfigMap {
     metadata+: { name: 'foo' },
@@ -53,4 +42,3 @@ Helpers for creating k8s resources without abuse of constructor functions
   },
 
 }
-```
