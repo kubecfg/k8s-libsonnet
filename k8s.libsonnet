@@ -7,7 +7,7 @@
 // 2. a system to build "component" and "mount" them in parent components.
 //
 // 3. a prototype-based k8s "schema".
-
+local kubecfg = import 'kubecfg.libsonnet';
 {
   // -------------------------
   // generic helpers
@@ -231,6 +231,15 @@
 
   // a zip of std.objectFields and std.objectValues.
   local objectEntries(o) = [[k, o[k]] for k in std.objectFields(o)],
+
+  // adopt existing resources and make them extend the types defined by the k8s-libsonnet library.
+  adopt(objs):: kubecfg.deepMap(function(o) $.typeFor(o) + kubecfg.toOverlay(o), objs),
+
+  typeFor(o)::
+    local gv = std.splitLimitR('/' + o.apiVersion, '/', 1),
+          gvk = { group: gv[0], version: gv[1], kind: o.kind },
+          path = std.lstripChars('%(group)s.%(version)s.%(kind)s' % gvk, './');
+    kubecfg.getPath($, path, default=$.Object),
 
   // -------------------------
   // types
