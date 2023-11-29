@@ -6,13 +6,13 @@
 
   deployment: $.k8s.apps.v1.Deployment {
     metadata+: { name: 'nginx' },
-    spec: {
+    spec+: {
       replicas: 2,
       selector: { matchLabels: { app: 'nginx' } },
-      template: {
+      template+: {
         metadata: { labels: { app: 'nginx' } },
-        spec: {
-          containers+: {
+        spec+: {
+          containers_+: {
             nginx: {
               image: 'nginx:1.14.2',
               env_+: {

@@ -17,13 +17,13 @@ Helpers for creating k8s resources without abuse of constructor functions.
 
   deployment: $.k8s.apps.v1.Deployment {
     metadata+: { name: 'nginx' },
-    spec: {
+    spec+: {
       replicas: 2,
-      selector: { matchLabels: { app: 'nginx' } },
-      template: {
-        metadata: { labels: { app: 'nginx' } },
-        spec: {
-          containers+: {
+      selector+: { matchLabels: { app: 'nginx' } },
+      template+: {
+        metadata+: { labels: { app: 'nginx' } },
+        spec+: {
+          containers_+: {
             nginx: {
               image: 'nginx:1.14.2',
               env_+: {
@@ -45,7 +45,7 @@ Helpers for creating k8s resources without abuse of constructor functions.
   service: $.k8s.v1.Service {
     metadata+: { name: 'nginx' },
     spec+: {
-      selector: $.deployment.spec.selector.matchLabels,
+      selector+: $.deployment.spec.selector.matchLabels,
       ports_+: {
         http: { port: 80, targetPort: 'http' },
       },
