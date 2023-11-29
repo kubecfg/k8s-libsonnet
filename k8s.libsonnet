@@ -506,6 +506,9 @@
       DestinationRule: v.Object {
         kind: 'DestinationRule',
       },
+      EnvoyFilter: v.Object {
+        kind: 'EnvoyFilter',
+      },
     },
   },
 
@@ -632,6 +635,55 @@
         kind: 'ServiceAccount',
         namespace: v.Object.metadata.namespace,
         name: error 'required',
+      },
+    },
+  },
+
+  'apiextensions.k8s.io':: {
+    local group = self,
+    Object:: $.Object {
+      apiVersion: 'apiextensions.k8s.io/',
+    },
+    v1:: {
+      local v = self,
+      Object: group.Object {
+        apiVersion+: 'v1',
+      },
+      CustomResourceDefinition: v.Object {
+        kind: 'CustomResourceDefinition',
+      },
+    },
+  },
+
+  'cert-manager.io':: {
+    local group = self,
+    Object:: $.Object {
+      apiVersion: 'cert-manager.io/',
+    },
+    v1:: {
+      local v = self,
+      Object: group.Object {
+        apiVersion+: 'v1',
+      },
+      Certificate: v.Object {
+        kind: 'Certificate',
+      },
+    },
+  },
+
+  // Red Hat OpenShift objects
+  'route.openshift.io':: {
+    local group = self,
+    Object:: $.Object {
+      apiVersion: 'route.openshift.io/',
+    },
+    v1:: {
+      local v = self,
+      Object: group.Object {
+        apiVersion+: 'v1',
+      },
+      Route: v.Object {
+        kind: 'Route',
       },
     },
   },
