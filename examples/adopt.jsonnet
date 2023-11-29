@@ -3,6 +3,24 @@
     ObjectMeta: {
       namespace: 'myns',
     },
+    v1+: {
+      PodSpec+: {
+        foo: 42,
+        containers_+: {
+          side+: {
+            image: 'my.dummy/sidecar',
+            env_+: {
+              FOO: { value: 'bar' },
+            },
+          },
+        },
+      },
+      Container+: {
+        env_+: {
+          COMMON_ENV+: { value: 'example common env' },
+        },
+      },
+    },
   },
 
   upstream: $.k8s.adopt(std.parseYaml(importstr 'adopt.yaml')),
