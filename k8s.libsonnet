@@ -13,6 +13,10 @@ local kubecfg = import 'kubecfg.libsonnet';
   // generic helpers
   // -------------------------
 
+  // workaround for https://github.com/google/go-jsonnet/issues/736
+  // local objectHas(o, f) = std.objectHas(o, f),
+  local objectHas(o, f) = std.setMember(f, std.objectFields(o)),
+
   // applies overlay to each field of obj.
   applyOverlayEach(obj, overlay):: $.mapObject(function(v) v + overlay, obj),
 
@@ -23,7 +27,7 @@ local kubecfg = import 'kubecfg.libsonnet';
   // mapObject applies f to all the values of the o object. Unlike std.mapWithKey, the "hidden" property of the fields is preserved.
   mapObject(f, o):: std.foldl(function(acc, i) acc + (
     local v = f(o[i]);
-    if std.objectHas(o, i) then { [i]: v } else { [i]:: v }
+    if objectHas(o, i) then { [i]: v } else { [i]:: v }
   ), std.objectFieldsAll(o), {}),
 
   // Like std.objectValues but adds a `[key`] field with the key of each element.
@@ -206,7 +210,33 @@ local kubecfg = import 'kubecfg.libsonnet';
     acc {
       [name + '_']+:: {},
       [name]: $.asNamedArray($.deriveEach(type, self[name + '_'])),
-    }, arr, {}),
+    }, arr, { [adoptUpstreamKey]:: adopterFromTypedNamedArrays(arr) }),
+  local adoptUpstreamKey = '_adoptUpstream',
+
+  // This function returns the "adopter" function for a given partial type (object subtree).
+  // The adopter function logically performs the inverse function of typedNamedArrays.
+  local adopterFromPartialType(obj) = std.get(obj, adoptUpstreamKey, function(o) o),
+
+  // returns a function that will convert an upstream object into an object in the style of what users of this library
+  // would have crafted, according to the "typed named array" field definitions (containers -> containers_, env -> env_, ...).
+  // `arr` is an array of field definitions. A field definition is either string (the name of a field, e.g. 'containers')
+  // or in turn an tuple of [field_name, element_type]
+  local adopterFromTypedNamedArrays(arr) = function(o) std.foldl(
+    function(acc, d) adoptNamedArray(acc, if std.isArray(d) then d else [d, {}]),
+    arr,
+    o
+  ),
+
+  local adoptNamedArray(o, fieldDef) =
+    local name = if std.isArray(fieldDef) then fieldDef[0] else fieldDef;
+    local type = if std.isArray(fieldDef) then fieldDef[1] else {};
+    o {
+      [name + '_']+:: {
+        [i.name]+: i
+        for i in std.get(o, name, [])
+      },
+      [name]: $.asNamedArray($.mapObject(function(v) adoptObject(v, type), self[name + '_'])),
+    },
 
   // "Objectified" array
   //
@@ -233,13 +263,28 @@ local kubecfg = import 'kubecfg.libsonnet';
   local objectEntries(o) = [[k, o[k]] for k in std.objectFields(o)],
 
   // adopt existing resources and make them extend the types defined by the k8s-libsonnet library.
-  adopt(objs):: kubecfg.deepMap(function(o) $.typeFor(o) + kubecfg.toOverlay(o), objs),
+  adopt(objs):: kubecfg.deepMap(function(o) adoptObject(kubecfg.toOverlay(o), $.typeFor(o)), objs),
+
+  local adoptObject(obj, typ) = deepMapObject(adoptObjectSubtree, typ + obj),
+  local adoptObjectSubtree(obj) = adopterFromPartialType(obj)(obj),
 
   typeFor(o)::
     local gv = std.splitLimitR('/' + o.apiVersion, '/', 1),
           gvk = { group: gv[0], version: gv[1], kind: o.kind },
           path = std.lstripChars('%(group)s.%(version)s.%(kind)s' % gvk, './');
     kubecfg.getPath($, path, default=$.Object),
+
+  // deepMapObject(func, o): Apply the given function to each
+  // object in nested collection o, preserving the structure of o.
+  // It traverses arrays but it doesn't invoke the function on on arrays
+  local deepMapObject(func, o) = (
+    if std.isObject(o) then
+      func($.mapObject(function(o) deepMapObject(func, o), o))
+    else if std.isArray(o) then
+      [deepMapObject(func, elem) for elem in o]
+    else o
+  ),
+  assert std.assertEqual('%s' % [deepMapObject(std.toString, { a: { b: [{ c: 1 }] } })], '{"a": "{\\"b\\": [\\"{\\\\\\"c\\\\\\": 1}\\"]}"}'),
 
   // -------------------------
   // types
