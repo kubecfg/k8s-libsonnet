@@ -184,14 +184,14 @@ local kubecfg = import 'kubecfg.libsonnet';
   }, components),
 
   Component:: {
-    k8s+:: {},
+    k8s+:: if 'k8s' in super then super.k8s else $,
     components_:: {},
     components: self.k8s.mountComponents(self, self.components_),
   },
 
+  // Deprecated; always use a Component (kept for backwards compatibility)
   RootComponent:: $.Component {
     k8s:: $,
-    mixins+:: {},
   },
 
   // The typedNamedArrays function allows to compactly define:
