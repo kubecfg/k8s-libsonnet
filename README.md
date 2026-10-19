@@ -9,7 +9,7 @@ Helpers for creating k8s resources without abuse of constructor functions.
 ## Example:
 
 ```jsonnet
-(import '../k8s.libsonnet').RootComponent {
+(import '../k8s.libsonnet').Component {
   configmap: $.k8s.v1.ConfigMap {
     metadata+: { name: 'foo' },
     data: { bar: 'baz' },
@@ -98,8 +98,10 @@ as `Deployment` or `StatefulSet`, you can override the `ObjectTemplateMeta` fiel
   k8s+: {
     v1+: {
       Service+: {
-        annotations+: {
-          'traefik.ingress.kubernetes.io/service.sticky.cookie.name': 'foobar',
+        metadata+: {
+          annotations+: {
+            'traefik.ingress.kubernetes.io/service.sticky.cookie.name': 'foobar',
+          }
         }
       }
     }

@@ -1,4 +1,4 @@
-(import '../k8s.libsonnet').RootComponent {
+(import '../k8s.libsonnet').Component {
   configmap: $.k8s.v1.ConfigMap {
     metadata+: { name: 'foo' },
     data: { bar: 'baz' },
@@ -8,9 +8,9 @@
     metadata+: { name: 'nginx' },
     spec+: {
       replicas: 2,
-      selector: { matchLabels: { app: 'nginx' } },
+      selector+: { matchLabels: { app: 'nginx' } },
       template+: {
-        metadata: { labels: { app: 'nginx' } },
+        metadata+: { labels: { app: 'nginx' } },
         spec+: {
           containers_+: {
             nginx: {
@@ -34,7 +34,7 @@
   service: $.k8s.v1.Service {
     metadata+: { name: 'nginx' },
     spec+: {
-      selector: $.deployment.spec.selector.matchLabels,
+      selector+: $.deployment.spec.selector.matchLabels,
       ports_+: {
         http: { port: 80, targetPort: 'http' },
       },
