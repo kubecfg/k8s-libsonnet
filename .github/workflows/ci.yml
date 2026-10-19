@@ -14,4 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: extractions/setup-just@v1
+      - run: |
+          sudo curl -fsSL -o /usr/local/bin/kubecfg https://github.com/kubecfg/kubecfg/releases/download/v0.39.0/kubecfg_Linux_X64
+          sudo chmod +x /usr/local/bin/kubecfg
       - run: just test
