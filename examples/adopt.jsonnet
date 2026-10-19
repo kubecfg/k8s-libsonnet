@@ -1,4 +1,4 @@
-(import '../k8s.libsonnet').RootComponent {
+(import '../k8s.libsonnet').Component {
   k8s+: {
     ObjectMeta: {
       namespace: 'myns',
