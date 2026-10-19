@@ -3,8 +3,8 @@
 export KUBECFG_ALPHA := "true"
 
 test:
-    @ find . -name "*.jsonnet" -exec just assert {} \;
-    @ find . -name "*.golden" -exec just golden {} \;
+    @ find . -name "*.jsonnet" -print0 | xargs -0 -n1 just assert
+    @ find . -name "*.golden" -print0 | xargs -0 -n1 just golden
 
 golden FILE:
     #!/bin/bash
