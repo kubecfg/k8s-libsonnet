@@ -230,10 +230,13 @@ local kubecfg = import 'kubecfg.libsonnet';
   local adoptNamedArray(o, fieldDef) =
     local name = if std.isArray(fieldDef) then fieldDef[0] else fieldDef;
     local type = if std.isArray(fieldDef) then fieldDef[1] else {};
+    local items = std.get(o, name, []);
+    // elements without a name (e.g. `ports: [{ containerPort: 80 }]`) cannot be keyed; leave the array as-is.
+    if !std.all([std.objectHas(i, 'name') for i in items]) then o else
     o {
       [name + '_']+:: {
         [i.name]+: i
-        for i in std.get(o, name, [])
+        for i in items
       },
       [name]: $.asNamedArray($.mapObject(function(v) adoptObject(v, type), self[name + '_'])),
     },
@@ -269,10 +272,10 @@ local kubecfg = import 'kubecfg.libsonnet';
   local adoptObjectSubtree(obj) = adopterFromPartialType(obj)(obj),
 
   typeFor(o)::
-    local gv = std.splitLimitR('/' + o.apiVersion, '/', 1),
-          gvk = { group: gv[0], version: gv[1], kind: o.kind },
-          path = std.lstripChars('%(group)s.%(version)s.%(kind)s' % gvk, './');
-    kubecfg.getPath($, path, default=$.Object),
+    local gv = std.splitLimitR(o.apiVersion, '/', 1),
+          group = if std.length(gv) == 2 then std.get($, gv[0], {}) else $,
+          version = std.get(group, gv[std.length(gv) - 1], {});
+    std.get(version, o.kind, $.Object),
 
   // deepMapObject(func, o): Apply the given function to each
   // object in nested collection o, preserving the structure of o.
@@ -334,6 +337,8 @@ local kubecfg = import 'kubecfg.libsonnet';
   ObjectTemplateMeta:: {
   },
 
+  local clusterScoped = { metadata+: { namespace:: null } },
+
   ObjectMeta:: self.ObjectTemplateMeta {
     assert 'name' in self || 'generateName' in self : 'Object metadata must have a "name" or a "generateName"',
   },
@@ -343,12 +348,8 @@ local kubecfg = import 'kubecfg.libsonnet';
     Object: $.Object {
       apiVersion: 'v1',
     },
-    Namespace: v.Object {
+    Namespace: v.Object + clusterScoped {
       kind: 'Namespace',
-      metadata+: {
-        // a namespace resource is not a namespaced resource.
-        namespace:: null,
-      },
     },
     ServiceAccount: v.Object {
       kind: 'ServiceAccount',
@@ -364,6 +365,11 @@ local kubecfg = import 'kubecfg.libsonnet';
       spec+: v.ServiceSpec,
     },
     ServiceSpec: $.typedNamedArrays(['ports']),
+
+    // a Pod gets the same overlays as every other pod template.
+    Pod: v.Object + v.PodTemplateSpec {
+      kind: 'Pod',
+    },
 
     PodTemplateSpec: {
       local pts = self,
@@ -448,6 +454,13 @@ local kubecfg = import 'kubecfg.libsonnet';
       },
       JobSpec: {
         template+: $.v1.PodTemplateSpec,
+      },
+      CronJob: v.Object {
+        kind: 'CronJob',
+        spec+: v.CronJobSpec,
+      },
+      CronJobSpec: {
+        jobTemplate+: { spec+: v.JobSpec },
       },
     },
   },
@@ -660,11 +673,11 @@ local kubecfg = import 'kubecfg.libsonnet';
         kind: 'Role',
         name: error 'required',
       },
-      ClusterRole: v.Object {
+      ClusterRole: v.Object + clusterScoped {
         kind: 'ClusterRole',
         rules: [],
       },
-      ClusterRoleBinding: v.Object {
+      ClusterRoleBinding: v.Object + clusterScoped {
         kind: 'ClusterRoleBinding',
         roleRef: v.ClusterRoleRef,
         subjects: [],
@@ -687,7 +700,7 @@ local kubecfg = import 'kubecfg.libsonnet';
       ServiceAccountRef:: {
         apiGroup: '',
         kind: 'ServiceAccount',
-        namespace: v.Object.metadata.namespace,
+        namespace: std.get($.ObjectMeta { name:: '' }, 'namespace', error 'required namespace'),
         name: error 'required',
       },
     },
@@ -703,7 +716,7 @@ local kubecfg = import 'kubecfg.libsonnet';
       Object: group.Object {
         apiVersion+: 'v1',
       },
-      CustomResourceDefinition: v.Object {
+      CustomResourceDefinition: v.Object + clusterScoped {
         kind: 'CustomResourceDefinition',
       },
     },

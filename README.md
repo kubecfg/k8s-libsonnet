@@ -114,7 +114,7 @@ as `Deployment` or `StatefulSet`, you can override the `ObjectTemplateMeta` fiel
 There are many resource types that can create Pod (`Deployment`, `StatefulSet`, `Job`, ...).
 All of them have a common way to express pod parameters, called a [`PodTemplateSpec`](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#podtemplatespec-v1-core).
 
-All the resource type templates defined in `k8s-libsonnet` that include a `PodTemplateSpec` share the same `k8s.PodTemplateSpec` template.
+All the resource type templates defined in `k8s-libsonnet` that include a `PodTemplateSpec` share the same `k8s.v1.PodTemplateSpec` template (a bare `v1.Pod` uses it too).
 This means you can just extend that template and include overlays which will be shared by all pods.
 
 A common use case are node selectors and tolerations:
