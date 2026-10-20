@@ -3,6 +3,16 @@
 # `todography build` draws it.
 title = "k8s-libsonnet"
 
+# Bands are drawn top to bottom in this order: add-ons on top, built-in
+# Kubernetes below them, the library's own pieces at the bottom.
+[[band]]
+id = "addons"
+title = "Third-party add-on APIs"
+
+[[band]]
+id = "official"
+title = "Official add-on APIs"
+
 [[band]]
 id = "workloads"
 title = "Workloads and app config"
@@ -10,14 +20,6 @@ title = "Workloads and app config"
 [[band]]
 id = "cluster"
 title = "Cluster-wide and platform"
-
-[[band]]
-id = "official"
-title = "Official add-on APIs"
-
-[[band]]
-id = "addons"
-title = "Third-party add-on APIs"
 
 [[band]]
 id = "runtime"
