@@ -235,10 +235,11 @@ local kubecfg = import 'kubecfg.libsonnet';
     if !std.all([std.objectHas(i, 'name') for i in items]) then o else
     o {
       [name + '_']+:: {
-        [i.name]+: i
+        // adopt each item now, so later overlays on `foo_` land on top of the upstream item.
+        [i.name]+: adoptObject(i, type)
         for i in items
       },
-      [name]: $.asNamedArray($.mapObject(function(v) adoptObject(v, type), self[name + '_'])),
+      [name]: $.asNamedArray($.deriveEach(type, self[name + '_'])),
     },
 
   // "Objectified" array
