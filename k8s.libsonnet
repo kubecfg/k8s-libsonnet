@@ -573,6 +573,16 @@ local kubecfg = import 'kubecfg.libsonnet';
       DestinationRule: v.Object {
         kind: 'DestinationRule',
       },
+      // Istio doesn't serve EnvoyFilter as v1beta1; use v1alpha3.EnvoyFilter.
+      EnvoyFilter: v.Object {
+        kind: 'EnvoyFilter',
+      },
+    },
+    v1alpha3:: {
+      local v = self,
+      Object: group.Object {
+        apiVersion+: 'v1alpha3',
+      },
       EnvoyFilter: v.Object {
         kind: 'EnvoyFilter',
       },
@@ -634,10 +644,24 @@ local kubecfg = import 'kubecfg.libsonnet';
     Object:: $.Object {
       apiVersion: 'kafka.strimzi.io/',
     },
+    // Strimzi before 1.0 only; Strimzi 1.0 removed v1beta2.
     v1beta2:: {
       local v = self,
       Object: group.Object {
         apiVersion+: 'v1beta2',
+      },
+      KafkaTopic: v.Object {
+        kind: 'KafkaTopic',
+        spec+: v.KafkaTopicSpec,
+      },
+      KafkaTopicSpec:: {
+        topicName: error 'required',
+      },
+    },
+    v1:: {
+      local v = self,
+      Object: group.Object {
+        apiVersion+: 'v1',
       },
       KafkaTopic: v.Object {
         kind: 'KafkaTopic',

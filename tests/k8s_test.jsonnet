@@ -34,6 +34,13 @@ local cron = manifest(k8s.batch.v1.CronJob {
 });
 assert cron.spec.jobTemplate.spec.template.spec.nodeSelector.os == 'linux' : cron;
 
+// add-on kinds use the apiVersion their projects serve today.
+local apiOf(t) = manifest(t { metadata+: { name: 'x' } }).apiVersion;
+assert apiOf(k8s['kafka.strimzi.io'].v1.KafkaTopic { spec+: { topicName: 't' } }) == 'kafka.strimzi.io/v1';
+assert apiOf(k8s['networking.istio.io'].v1alpha3.EnvoyFilter) == 'networking.istio.io/v1alpha3';
+assert kindOf('kafka.strimzi.io/v1', 'KafkaTopic') == 'KafkaTopic';
+assert kindOf('networking.istio.io/v1alpha3', 'EnvoyFilter') == 'EnvoyFilter';
+
 // adopt keeps arrays whose elements have no name instead of crashing.
 local adopted = manifest(k8s.adopt([{
   apiVersion: 'apps/v1',
