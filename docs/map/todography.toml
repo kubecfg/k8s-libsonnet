@@ -1,0 +1,61 @@
+# The k8s-libsonnet coverage map: which Kubernetes kinds have a template in
+# k8s.libsonnet and which don't yet. `todography lint` checks it;
+# `todography build` draws it.
+title = "k8s-libsonnet"
+
+# Bands are drawn top to bottom in this order: add-ons on top, built-in
+# Kubernetes below them, the library's own pieces at the bottom.
+[[band]]
+id = "addons"
+title = "Third-party add-on APIs"
+
+[[band]]
+id = "official"
+title = "Official add-on APIs"
+
+[[band]]
+id = "workloads"
+title = "Workloads and app config"
+
+[[band]]
+id = "cluster"
+title = "Cluster-wide and platform"
+
+[[band]]
+id = "runtime"
+title = "Created at runtime"
+
+[[band]]
+id = "lib"
+title = "Library machinery"
+
+[[milestone]]
+id = "m1"
+title = "Common app kinds"
+summary = "Kinds that most app manifests contain"
+
+[[milestone]]
+id = "m2"
+title = "Cluster-wide kinds"
+summary = "Templates that stop the shared namespace leaking into cluster-wide objects"
+
+[[milestone]]
+id = "m3"
+title = "Later"
+summary = "Real but less common kinds"
+
+[[kind]]
+id = "builtin"
+summary = "A kind built into Kubernetes (v1.37)"
+
+[[kind]]
+id = "sig-crd"
+summary = "An official Kubernetes API from a SIG project, installed as CRDs"
+
+[[kind]]
+id = "crd"
+summary = "A third-party API, installed as CRDs"
+
+[[kind]]
+id = "lib"
+summary = "A shared piece of k8s.libsonnet"
