@@ -23,8 +23,13 @@ status = "done"
 needs = ["/lib/named-arrays"]
 
 [[feature]]
+id = "upstream-order"
+title = "Keeps upstream items in their upstream order; items added by overlays come after"
+status = "done"
+
+[[feature]]
 id = "unnamed-items"
-title = "Leaves arrays alone when their items have no name"
+title = "Keeps items with no name or a repeated name in place, in upstream order"
 status = "done"
 +++
 
