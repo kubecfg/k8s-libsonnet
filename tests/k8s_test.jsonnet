@@ -7,20 +7,6 @@ local k8s = base {
 local rbac = k8s['rbac.authorization.k8s.io'].v1;
 local manifest(o) = std.parseJson(std.manifestJsonMinified(o));
 
-// typeFor resolves core, simple and dotted groups.
-local kindOf(apiVersion, kind) = base.typeFor({ apiVersion: apiVersion, kind: kind }).kind;
-assert kindOf('v1', 'Service') == 'Service';
-assert kindOf('apps/v1', 'Deployment') == 'Deployment';
-assert kindOf('networking.k8s.io/v1', 'Ingress') == 'Ingress';
-
-// cluster-scoped objects don't inherit the ambient namespace.
-local nsOf(t) = std.get(manifest(t { metadata+: { name: 'x' } }).metadata, 'namespace');
-assert nsOf(k8s.v1.ConfigMap) == 'ns';
-assert nsOf(k8s.v1.Namespace) == null;
-assert nsOf(rbac.ClusterRole) == null;
-assert nsOf(rbac.ClusterRoleBinding { roleRef+: { name: 'r' } }) == null;
-assert nsOf(k8s['apiextensions.k8s.io'].v1.CustomResourceDefinition) == null;
-
 // ServiceAccountRef picks up the ambient namespace.
 assert manifest(rbac.ServiceAccountRef { name: 'sa' }).namespace == 'ns';
 
@@ -33,22 +19,6 @@ local cron = manifest(k8s.batch.v1.CronJob {
   spec+: { schedule: '@daily', jobTemplate+: { spec+: { template+: { spec+: { containers_+: { c: { image: 'i' } } } } } } },
 });
 assert cron.spec.jobTemplate.spec.template.spec.nodeSelector.os == 'linux' : cron;
-
-// add-on kinds use the apiVersion their projects serve today.
-local apiOf(t) = manifest(t { metadata+: { name: 'x' } }).apiVersion;
-assert apiOf(k8s['kafka.strimzi.io'].v1.KafkaTopic { spec+: { topicName: 't' } }) == 'kafka.strimzi.io/v1';
-assert apiOf(k8s['networking.istio.io'].v1alpha3.EnvoyFilter) == 'networking.istio.io/v1alpha3';
-assert kindOf('kafka.strimzi.io/v1', 'KafkaTopic') == 'KafkaTopic';
-assert kindOf('networking.istio.io/v1alpha3', 'EnvoyFilter') == 'EnvoyFilter';
-
-// adopt keeps arrays whose elements have no name instead of crashing.
-local adopted = manifest(k8s.adopt([{
-  apiVersion: 'apps/v1',
-  kind: 'Deployment',
-  metadata: { name: 'd' },
-  spec: { template: { spec: { containers: [{ name: 'c', image: 'i', ports: [{ containerPort: 80 }] }] } } },
-}]))[0];
-assert adopted.spec.template.spec.containers[0].ports == [{ containerPort: 80 }] : adopted;
 
 // every template has the right apiVersion and kind, typeFor finds it, and only namespaced kinds get the namespace.
 local g(group) = k8s[group];
@@ -90,7 +60,7 @@ local checkTemplate(t) =
   local o = manifest(t[0] + t[4] { metadata+: { name: 'x' } });
   local found = base.typeFor({ apiVersion: t[1], kind: t[2] });
   assert o.apiVersion == t[1] && o.kind == t[2] : o;
-  assert (std.get(o.metadata, 'namespace') == 'ns') == t[3] : o;
+  assert std.get(o.metadata, 'namespace') == (if t[3] then 'ns' else null) : o;
   assert found.apiVersion == t[1] && found.kind == t[2] : t[1] + ' ' + t[2];
   true;
 assert std.all(std.map(checkTemplate, templates));
@@ -245,6 +215,71 @@ assert ap.spec.volumes == [{ name: 'v', emptyDir: { medium: 'Memory' } }] : ap;
 assert ap.metadata.namespace == 'ns' : ap;
 local ap2 = manifest(adoptedPod { spec+: { containers_+: { new: { image: 'n', env_+: { B: { value: 'b' } } } } } });
 assert ap2.spec.containers[1].env == [{ name: 'B', value: 'b' }] : ap2;
+// default-container follows containers added after adopt.
+assert !('annotations' in ap2.metadata) : ap2;
+assert manifest(adoptedPod { spec+: { containers_+: { c+: { sidecar:: true }, new: { image: 'n' } } } })
+       .metadata.annotations['kubectl.kubernetes.io/default-container'] == 'new';
+
+local pod(spec) = { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'p' }, spec: spec };
+local adoptWith(types, spec, overlay={}) = manifest((base { v1+: types }).adopt([pod(spec)])[0] + overlay);
+
+// overlays on the type reach adopted items: they merge with the upstream item and with later overlays.
+local typeOverlays = adoptWith(
+  {
+    Container+: { imagePullPolicy: 'IfNotPresent', securityContext+: { runAsNonRoot: true } },
+    PodSpec+: { containers_+: { c+: { imagePullPolicy: 'Always', env_+: { X: { value: 'x' } } } } },
+  },
+  { containers: [{ name: 'c', image: 'i', env: [{ name: 'A', value: 'a' }], securityContext: { readOnlyRootFilesystem: true } }] },
+).spec.containers[0];
+assert typeOverlays.env == [{ name: 'A', value: 'a' }, { name: 'X', value: 'x' }] : typeOverlays;
+assert typeOverlays.imagePullPolicy == 'Always' : typeOverlays;
+assert typeOverlays.securityContext == { readOnlyRootFilesystem: true, runAsNonRoot: true } : typeOverlays;
+
+// fields and asserts of the item type see the final item, not the upstream one.
+local live = adoptWith(
+  { Container+: {
+    imagePullPolicy: if std.endsWith(self.image, ':latest') then 'Always' else 'IfNotPresent',
+    assert 'resources' in self : 'resources required',
+  } },
+  { containers: [{ name: 'c', image: 'x:1' }] },
+  { spec+: { containers_+: { c+: { image: 'x:latest', resources: {} } } } },
+).spec.containers[0];
+assert live.imagePullPolicy == 'Always' : live;
+
+// extending a type with more named arrays keeps the built-in ones adoptable.
+local extended = adoptWith(
+  { PodSpec+: base.typedNamedArrays(['imagePullSecrets']) },
+  { containers: [{ name: 'c', image: 'i' }], imagePullSecrets: [{ name: 's' }] },
+  { spec+: { containers_+: { c+: { image: 'patched' } }, imagePullSecrets_+: { t: {} } } },
+).spec;
+assert extended.containers[0].image == 'patched' : extended;
+assert extended.imagePullSecrets == [{ name: 's' }, { name: 't' }] : extended;
+
+// upstream order is kept; null arrays and unnamed, null-named or repeated items don't break adopt.
+local odd = adoptWith({}, {
+  initContainers: [{ name: 'wait', image: 'w' }, { name: 'migrate', image: 'm' }],
+  volumes: null,
+  containers: [{
+    name: 'c',
+    image: 'i',
+    env: [{ name: 'POD_IP', value: 'ip' }, { name: 'JAVA_OPTS', value: '$(POD_IP)' }],
+    ports: [{ containerPort: 80 }, { name: null, containerPort: 81 }, { name: 'http', containerPort: 82 }],
+    volumeMounts: [{ name: 'cfg', mountPath: '/a', subPath: 'a' }, { name: 'cfg', mountPath: '/b', subPath: 'b' }],
+  }],
+}, { spec+: {
+  volumes_+: { v: { emptyDir: {} } },
+  containers_+: { c+: { ports_+: { http+: { containerPort: 8080 }, metrics: { containerPort: 9090 } } } },
+} }).spec;
+assert [c.name for c in odd.initContainers] == ['wait', 'migrate'] : odd;
+assert [e.name for e in odd.containers[0].env] == ['POD_IP', 'JAVA_OPTS'] : odd;
+assert odd.volumes == [{ name: 'v', emptyDir: {} }] : odd;
+assert odd.containers[0].ports == [
+  { containerPort: 80 },
+  { name: null, containerPort: 81 },
+  { name: 'http', containerPort: 8080 },
+  { name: 'metrics', containerPort: 9090 },
+] : odd;
+assert std.length(odd.containers[0].volumeMounts) == 2 : odd;
 local foo = { apiVersion: 'example.com/v1', kind: 'Foo', metadata: { name: 'f', namespace: 'other' }, spec: { items: [{ name: 'a' }] } };
 assert manifest(k8s.adopt([foo]))[0] == foo;
 

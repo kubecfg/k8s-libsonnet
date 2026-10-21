@@ -210,37 +210,10 @@ local kubecfg = import 'kubecfg.libsonnet';
     acc {
       [name + '_']+:: {},
       [name]: $.asNamedArray($.deriveEach(type, self[name + '_'])),
-    }, arr, { [adoptUpstreamKey]:: adopterFromTypedNamedArrays(arr) }),
-  local adoptUpstreamKey = '_adoptUpstream',
-
-  // This function returns the "adopter" function for a given partial type (object subtree).
-  // The adopter function logically performs the inverse function of typedNamedArrays.
-  local adopterFromPartialType(obj) = std.get(obj, adoptUpstreamKey, function(o) o),
-
-  // returns a function that will convert an upstream object into an object in the style of what users of this library
-  // would have crafted, according to the "typed named array" field definitions (containers -> containers_, env -> env_, ...).
-  // `arr` is an array of field definitions. A field definition is either string (the name of a field, e.g. 'containers')
-  // or in turn an tuple of [field_name, element_type]
-  local adopterFromTypedNamedArrays(arr) = function(o) std.foldl(
-    function(acc, d) adoptNamedArray(acc, if std.isArray(d) then d else [d, {}]),
-    arr,
-    o
-  ),
-
-  local adoptNamedArray(o, fieldDef) =
-    local name = if std.isArray(fieldDef) then fieldDef[0] else fieldDef;
-    local type = if std.isArray(fieldDef) then fieldDef[1] else {};
-    local items = std.get(o, name, []);
-    // elements without a name (e.g. `ports: [{ containerPort: 80 }]`) cannot be keyed; leave the array as-is.
-    if !std.all([std.objectHas(i, 'name') for i in items]) then o else
-    o {
-      [name + '_']+:: {
-        // adopt each item now, so later overlays on `foo_` land on top of the upstream item.
-        [i.name]+: adoptObject(i, type)
-        for i in items
-      },
-      [name]: $.asNamedArray($.deriveEach(type, self[name + '_'])),
-    },
+      // remembers the element type of each named array, so `adopt` can find them. Chains when a type is extended.
+      [namedArraysKey]+:: { [name]: type },
+    }, arr, {}),
+  local namedArraysKey = '_namedArrays',
 
   // "Objectified" array
   //
@@ -267,28 +240,52 @@ local kubecfg = import 'kubecfg.libsonnet';
   local objectEntries(o) = [[k, o[k]] for k in std.objectFields(o)],
 
   // adopt existing resources and make them extend the types defined by the k8s-libsonnet library.
-  adopt(objs):: kubecfg.deepMap(function(o) adoptObject(kubecfg.toOverlay(o), $.typeFor(o)), objs),
+  adopt(objs):: kubecfg.deepMap(function(o) $.typeFor(o) + adoptOverlay(o), objs),
 
-  local adoptObject(obj, typ) = deepMapObject(adoptObjectSubtree, typ + obj),
-  local adoptObjectSubtree(obj) = adopterFromPartialType(obj)(obj),
+  // adoptOverlay(obj) is like kubecfg.toOverlay(obj), except that the arrays the type declares with typedNamedArrays
+  // (containers, env, ...) go into their `foo_` objects, so later overlays can reach each item.
+  // It reads the type only through `super`, at render time, so later overlays merge with the upstream items
+  // and fields that read `self` see the final object.
+  local adoptOverlay(obj) =
+    local isList(v) = v == null || std.isArray(v);
+    local fields = std.objectFields(obj);
+    { [k]: obj[k] for k in fields if !std.isObject(obj[k]) && !isList(obj[k]) }
+    + { [k]+: adoptOverlay(obj[k]) for k in fields if std.isObject(obj[k]) }
+    + {
+      [k]: if namedArraysKey in super && std.objectHasAll(super[namedArraysKey], k) then adoptList(obj[k], super[namedArraysKey][k], super[k]) else obj[k]
+      for k in fields
+      if isList(obj[k])
+    }
+    + std.foldl(function(acc, k) acc {
+      [k + '_']+:: if namedArraysKey in super && std.objectHasAll(super[namedArraysKey], k) then
+        local keys = keyedNames(obj[k]);
+        { [i.name]+: adoptOverlay(i) for i in obj[k] if std.member(keys, std.get(i, 'name')) }
+      else {},
+    }, [k for k in fields if std.isArray(obj[k])], {}),
+
+  // `rendered` is the array the type renders from `foo_`. Upstream items keep their upstream order (it matters for
+  // initContainers and for env entries that reference each other); items added by overlays follow.
+  // Items that can't be keyed (no name, or a repeated name) are kept in place and can't be reached by overlays.
+  local adoptList(items, type, renderedArray) =
+    local list = if items == null then [] else items,
+          keys = keyedNames(list),
+          rendered = { [r.name]: r for r in renderedArray };
+    [
+      if std.member(keys, std.get(i, 'name')) then rendered[i.name] else type + adoptOverlay(i)
+      for i in list
+      if !std.member(keys, std.get(i, 'name')) || i.name in rendered
+    ] + [rendered[n] for n in std.objectFields(rendered) if !std.setMember(n, keys)],
+
+  // names that appear exactly once in a list of upstream items.
+  local keyedNames(items) =
+    local names = [i.name for i in items if std.get(i, 'name') != null];
+    std.set([n for n in names if std.count(names, n) == 1]),
 
   typeFor(o)::
     local gv = std.splitLimitR(o.apiVersion, '/', 1),
           group = if std.length(gv) == 2 then std.get($, gv[0], {}) else $,
           version = std.get(group, gv[std.length(gv) - 1], {});
     std.get(version, o.kind, $.Object),
-
-  // deepMapObject(func, o): Apply the given function to each
-  // object in nested collection o, preserving the structure of o.
-  // It traverses arrays but it doesn't invoke the function on on arrays
-  local deepMapObject(func, o) = (
-    if std.isObject(o) then
-      func($.mapObject(function(o) deepMapObject(func, o), o))
-    else if std.isArray(o) then
-      [deepMapObject(func, elem) for elem in o]
-    else o
-  ),
-  assert std.assertEqual('%s' % [deepMapObject(std.toString, { a: { b: [{ c: 1 }] } })], '{"a": "{\\"b\\": [\\"{\\\\\\"c\\\\\\": 1}\\"]}"}'),
 
   // -------------------------
   // types

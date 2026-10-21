@@ -35,8 +35,8 @@ diff -u examples/adopt.yaml <(kubecfg show examples/adopt.jsonnet)
 
 
 ```diff
---- examples/adopt.yaml	2023-11-29 14:56:10.368934322 +0100
-+++ /dev/fd/11	2023-11-29 17:28:39.665967467 +0100
+--- examples/adopt.yaml
++++ /dev/fd/11
 @@ -5,11 +5,13 @@
  kind: ConfigMap
  metadata:
@@ -51,16 +51,32 @@ diff -u examples/adopt.yaml <(kubecfg show examples/adopt.jsonnet)
  spec:
    replicas: 2
    selector:
-@@ -17,6 +19,8 @@
-       app: nginx
-   template:
-     metadata:
-+      annotations:
-+        kubectl.kubernetes.io/default-container: nginx
-       labels:
-         app: nginx
-     spec:
-@@ -40,6 +44,7 @@
+@@ -27,12 +29,24 @@
+             configMapKeyRef:
+               key: bar
+               name: foo
++        - name: COMMON_ENV
++          value: example common env
+         image: nginx:1.14.2
+         name: nginx
+         ports:
+         - containerPort: 80
+           name: http
+         volumeMounts: []
++      - env:
++        - name: COMMON_ENV
++          value: example common env
++        - name: FOO
++          value: bar
++        image: my.dummy/sidecar
++        name: side
++        ports: []
++        volumeMounts: []
++      foo: 42
+       initContainers: []
+       volumes: []
+ ---
+@@ -40,6 +54,7 @@
  kind: Service
  metadata:
    name: nginx
